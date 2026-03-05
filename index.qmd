@@ -332,7 +332,7 @@ aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
                  height = 0.2) +
   geom_point(size = 2) +
   labs(x = "Daily time (minutes)", y = "Age bands and sex",
-       title = "Time spent on activities by gender and age") +
+        title = "Time spent on activities by gender and age") +
   theme_minimal()
 ```
 
