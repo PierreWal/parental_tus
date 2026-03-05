@@ -1,0 +1,392 @@
+## Objectives
+
+This document presents a descriptive analysis  of the time use of parents of children up to age 16 comparing men and women:
+
+  - The time use activities should include working, parenting, caring, housework, sleep, social etc. 
+  - These could be broken down by highest qualification, social class, occupation, age banded, number of children etc.
+  - In the first instance using 2014-15 UK TUS.
+
+## Analysis
+
+There are a number of key notions to keep in mind when looking at time use data:
+
+1. The unit of observation is the day  of a respondent. Each respondent may have one or two days worth of data - typically one weekday, one day at the weekend. Unless otherwise specified, results below are averaged across both days.
+
+2. There are two main approaches to  estimating activity duration according to the denominator used: 
+
+-  Restricting the denominator to activity participants only. Estimates derived that way  provide realistic values of  duration for those who engage in the activity, but it has the disadvantage of relying on subsamples that may differ in composition, thus complicating direct comparisons.
+
+-  Alternatively, one can  use  the full sample of relevant observations as the denominator, including respondents who reported no time in the activity. This approach enhances the robustness of comparisons between groups, but produces lower average duration estimates due to the inclusion of zero-minute observations.
+
+
+
+
+```{r open_datasets}
+library(dplyr)
+library(haven)
+library(reshape2)
+library(ggplot2)
+library(spatstat)
+library(parallel)
+library(survey)
+library(srvyr)
+library(RColorBrewer)
+cbplt<-c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+datadir<-"~/Data/tus/UKDA-8128-stata/stata/stata11_se/"
+pl<-read_dta(paste0(datadir,"uktus15_individual.dta")) %>%   filter(DVAge>=16  & IndOut==11)%>%select(serial,pnum,DMSex,DM016,DVAge,dhiqual,dsoc,dnssec8)
+el<-read_dta(paste0(datadir,"uktus15_diary_ep_long.dta"))%>% filter(DVAge>=16 & IndOut==11) 
+ew<-read_dta(paste0(datadir,"uktus15_diary_wide.dta"))%>% filter(DVAge>=16 & IndOut==11)%>%select(serial,pnum,daynum,DiaryDay_Act,dmonth,
+                      act1_1:act1_144,dia_wt_a,dia_wt_b)
+
+```
+
+```{r labels}  
+### Plain English version of the categories of activity we are going to use for the tempograms
+
+lab.l<-c("Sleep","Self-care","Work and education","Housework/shopping",
+         "Caring/volunteering","Physical activity","Leisure","Travel")
+var.l<-c("slp","scr","wrk","hws","car","phy","lei","tra")
+```
+
+
+```{r recode_long}
+el$wkd<-ifelse(el$DiaryDay_Act==1 | el$DiaryDay_Act==7,"Weekend","Weekday")
+
+el<-el|> mutate(
+  slp.t =ifelse(whatdoing<210,eptime,0),
+  scr.t =ifelse(whatdoing>=210  & whatdoing<1000,eptime,0),
+  wrk.t=ifelse((whatdoing>=1000 & whatdoing<3000) ,eptime,0),
+  hws.t=ifelse((whatdoing>=3000 & whatdoing<3800 ),eptime,0),
+  car.t=ifelse((whatdoing>=3800 & whatdoing<5000) ,eptime,0),
+  phy.t=ifelse(whatdoing>=6000  & whatdoing<7000,eptime,0),
+  lei.t=ifelse((whatdoing>=5000 & whatdoing<6000) | (whatdoing>=7000 & whatdoing<9000)  ,eptime,0),
+  tra.t=ifelse((whatdoing>=9000 & whatdoing<9940) ,eptime,0)
+)
+
+for(i in 1:length(var.l)){
+el<-el|>group_by(serial,pnum,daynum)|>mutate(tmp=sum(eval(parse(text=paste0(var.l[i],".t")))))  
+names(el)[which(names(el)=="tmp")]<-paste0(var.l[i],".d")
+}
+```
+
+
+```{r recode_pers}
+
+### Number of children
+pl$nrkid<-ifelse(pl$DM016>2,"3+",as.character(pl$DM016))
+pl$nrkid<-factor(pl$nrkid,labels=c("None", "One", "Two","Three or more"))
+
+### Sex * whther parent
+pl$chsx<-as_factor(paste((pl$DM016>0),as_factor(pl$DMSex)))
+pl$chsx<-factor(pl$chsx,levels=levels(pl$chsx)[c(1,4,3,2)],labels = c("F, kids","M, kids","F, no kids","M, no kids"))
+
+### age bands
+pl<-pl|> mutate(
+            ageb=case_when(
+                  DVAge<16 ~ "<16",
+                  DVAge>=16 & DVAge<26 ~ "16-25",
+                  DVAge>=26 & DVAge<36 ~ "26-35",
+                  DVAge>=36 & DVAge<46 ~ "36-45",
+                  DVAge>=46 & DVAge<56 ~ "46-55",
+                  DVAge>=56 & DVAge<=99 ~ "55+"
+            ),
+            ageb=as.factor(ageb)
+            
+)
+                  
+```
+
+
+```{r merge}
+#We can now merge the episode dataset with the person-level one into a day-level one
+
+pts<-merge(el|>filter(epnum==1),pl,by=c("serial","pnum"),all=F)
+
+
+options(survey.lonely.psu = 'adjust')
+options(survey.multicore = T)
+
+```
+
+
+## Univariate descriptive statistics: mean, median and coefficient of variation.
+
+
+```{r desc}
+  pts.s<-pts|>  #filter(eval(parse(text=paste0(i,">0  & wkd==\"Weekday\"")))) |>
+                as_survey_design(id=psu,strata =strata,weights = dia_wt_a)
+
+
+res.sex<-data.frame()
+res.sex.p<-data.frame()
+res.wkd<-data.frame()
+res.nrkid<-data.frame()
+res.age<-data.frame()
+res.hiq<-data.frame()
+res.nss<-data.frame()
+res.soc<-data.frame()
+
+for(i in paste0(var.l,".d")){
+  pts.sp<-pts|>  filter(eval(parse(text=paste0(i,">0")))) |>
+                as_survey_design(id=psu,strata =strata,weights = dia_wt_a)
+
+### Overall
+
+  t1<-svyby(~eval(parse(text=i)), ~chsx, pts.s, svymean,vartype = "ci")
+  t2<-svyby(~eval(parse(text=i)), ~chsx, pts.s, svyquantile,vartype = "ci",quantile=0.5)
+  t3<-(svyby(~eval(parse(text=i)), ~chsx, pts.s, svyvar,vartype = "ci"))
+tmp.s<-cbind(t1,t2[,2:4],sqrt(t3[,c(2:4)])/t1[,c(2:4)])
+
+### Overall, participants
+
+  t1<-svyby(~eval(parse(text=i)), ~chsx, pts.sp, svymean,vartype = "ci")
+  t2<-svyby(~eval(parse(text=i)), ~chsx, pts.sp, svyquantile,vartype = "ci",quantile=0.5)
+  t3<-(svyby(~eval(parse(text=i)), ~chsx, pts.sp, svyvar,vartype = "ci"))
+tmp.sp<-cbind(t1,t2[,2:4],sqrt(t3[,c(2:4)])/t1[,c(2:4)])
+
+
+### Weekdays vs weekends
+
+  t1<-svyby(~eval(parse(text=i)), ~chsx+wkd, pts.s, svymean,vartype = "ci")
+#  t2<-svyby(~eval(parse(text=i)), ~chsx+wkd, pts.s, svyquantile,vartype = "ci",quantile=0.5)
+  t3<-(svyby(~eval(parse(text=i)), ~chsx+wkd, pts.s, svyvar,vartype = "ci"))
+tmp.w<-cbind(t1,sqrt(t3[,c(3:5)])/t1[,c(3:5)])
+
+
+### Number of kids
+  t1<-svyby(~eval(parse(text=i)), ~chsx+nrkid, pts.s, svymean,vartype = "ci")
+  t3<-(svyby(~eval(parse(text=i)), ~chsx+nrkid, pts.s, svyvar,vartype = "ci"))
+tmp.n<-cbind(t1,sqrt(t3[,c(3:5)])/t1[,c(3:5)])
+
+### Age bands
+  t1<-svyby(~eval(parse(text=i)), ~chsx+ageb, pts.s, svymean,vartype = "ci")
+  t3<-(svyby(~eval(parse(text=i)), ~chsx+ageb, pts.s, svyvar,vartype = "ci"))
+tmp.a<-cbind(t1,sqrt(t3[,c(3:5)])/t1[,c(3:5)])
+
+### Qualifications
+  t1<-svyby(~eval(parse(text=i)), ~chsx+as_factor(dhiqual), pts.s, svymean,vartype = "ci")
+  t3<-(svyby(~eval(parse(text=i)), ~chsx+as_factor(dhiqual), pts.s, svyvar,vartype = "ci"))
+tmp.h<-cbind(t1,sqrt(t3[,c(3:5)])/t1[,c(3:5)])
+
+### Occupations
+  t1<-svyby(~eval(parse(text=i)), ~chsx+as_factor(dsoc), pts.s, svymean,vartype = "ci")
+  t3<-(svyby(~eval(parse(text=i)), ~chsx+as_factor(dsoc), pts.s, svyvar,vartype = "ci"))
+tmp.o<-cbind(t1,sqrt(t3[,c(3:5)])/t1[,c(3:5)])
+
+### Social class
+  t1<-svyby(~eval(parse(text=i)), ~chsx+as_factor(dnssec8), pts.s, svymean,vartype = "ci")
+  t3<-(svyby(~eval(parse(text=i)), ~chsx+as_factor(dnssec8), pts.s, svyvar,vartype = "ci"))
+tmp.c<-cbind(t1,sqrt(t3[,c(3:5)])/t1[,c(3:5)])
+
+
+res.sex<-rbind(res.sex,tmp.s)
+res.sex.p<-rbind(res.sex.p,tmp.sp)
+res.wkd<-rbind(res.wkd,tmp.w)
+
+res.nrkid<-rbind(res.nrkid,tmp.n)
+res.age<-rbind(res.age,tmp.a)
+res.hiq<-rbind(res.hiq,tmp.h)
+res.nss<-rbind(res.nss,tmp.c)
+res.soc<-rbind(res.soc,tmp.o)
+
+}
+
+```
+
+
+
+
+### Gender (all respondents)
+
+```{r sex_all}
+
+res.sex<-cbind(Activity=rep(lab.l,each=4),res.sex)
+names(res.sex)[2:ncol(res.sex)]<-c("Group", "Mean","Mean_Low","Mean_Up","Median","Med_Low","Med_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.sex|>
+                    filter(Group=="F, kids" | Group=="M, kids")|>
+                    select(Activity,Group,Mean,Mean_Low,Mean_Up),digits = 0,row.names = F)
+
+
+ggplot(res.sex|>filter(Group=="F, kids" | Group=="M, kids")|>
+                select(Activity,Group,Mean,Mean_Low,Mean_Up), 
+       aes(x = Mean, y = interaction(Group, Activity, sep = " - "))) +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Groups and activities", title = "Time spent on activities by gender and parenting status") +
+  theme_minimal()
+```
+
+### Gender (participants)
+
+```{r sex_part}
+
+res.sex.p<-cbind(Activity=rep(lab.l,each=4),res.sex.p)
+names(res.sex.p)[2:ncol(res.sex.p)]<-c("Group", "Mean","Mean_Low","Mean_Up","Median","Med_Low","Med_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.sex.p|>
+                    filter(Group=="F, kids" | Group=="M, kids")|>
+                    select(Activity,Group,Mean,Mean_Low,Mean_Up),digits = 0,row.names = F)
+
+
+ggplot(res.sex.p|>filter(Group=="F, kids" | Group=="M, kids")|>
+                select(Activity,Group,Mean,Mean_Low,Mean_Up), 
+       aes(x = Mean, y = interaction(Group, Activity, sep = " - "))) +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Groups and activities",
+       title = "Time spent on activities by gender and parenting status") +
+  theme_minimal()
+```
+
+
+### Weekend vs weekdays
+
+```{r sex_wkd}
+
+res.wkd<-cbind(Activity=rep(lab.l,each=8),res.wkd)
+names(res.wkd)[2:ncol(res.nrkid)]<-c( "Group", "Diary","Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.wkd|>
+                    filter(Group=="F, kids" | Group=="M, kids")|>
+                    select(Activity,Diary,Group,Mean,Mean_Low,Mean_Up),digits = 0,row.names = F)
+
+
+ggplot(res.wkd|>filter(Group=="F, kids" | Group=="M, kids") |>
+                select(Activity,Diary,Group,Mean,Mean_Low,Mean_Up), 
+       aes(x = Mean, y = paste(Diary,Group, sep = " - "))) +
+    facet_wrap(~Activity,scale="free_x") +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Day type and sex",
+       title = "Time spent on activities by gender and parenting status") +
+  theme_minimal()
+```
+
+
+
+### Number of children
+
+```{r sex_nrkid}
+
+res.nrkid<-cbind(Activity=rep(lab.l,each=8),res.nrkid)
+names(res.nrkid)[2:ncol(res.nrkid)]<-c("Children", "Gender", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.nrkid|>
+                    filter(Gender!="F, no kids" & Gender!="M, no kids" & Children!="None")|>
+                    select(Activity,Children,Gender,Mean,Mean_Low,Mean_Up),
+                  digits = 0,row.names = F)
+
+
+ggplot(res.nrkid|>filter(Gender!="F, no kids" & Gender!="M, no kids" & Children!="None")|>select(Activity,Gender,Children,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Children, sep = " - "))) +
+  facet_wrap(~Activity) +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Number of children and sex",
+       title = "Time spent on activities by gender and parenting status") +
+  theme_minimal()
+
+```
+
+
+### Age banded
+
+```{r sex_age}
+
+res.age<-cbind(Activity=rep(lab.l,each=20),res.age)
+names(res.age)[2:ncol(res.age)]<-c( "Gender","Age", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.age|>
+                    filter(Gender!="F, no kids" & Gender!="M, no kids" )|>
+                    select(Activity,Age,Gender,Mean,Mean_Low,Mean_Up),
+                  digits = 2,row.names = F)
+
+
+ggplot(res.age|>filter(Gender!="F, no kids" & Gender!="M, no kids" ) |>
+         select(Activity,Gender,Age,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
+  facet_wrap(~ Age,ncol=2) +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Groups and activities",
+       title = "Time spent on activities by gender and age)") +
+  theme_minimal()
+```
+
+### Highest qualification
+
+```{r sex_qul}
+
+res.hiq<-cbind(Activity=rep(lab.l,each=26),res.hiq)
+names(res.hiq)[2:ncol(res.age)]<-c( "Gender","Qualification", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.hiq|>
+                    filter(Gender!="F, no kids" & Gender!="M, no kids" & Qualification != "Don't know")|>
+                    select(Activity,Qualification,Gender,Mean,Mean_Low,Mean_Up),
+                  digits=0,row.names = F)
+
+
+ggplot(res.hiq|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Qualification != "Don't know")  |>
+         select(Activity,Gender,Qualification,Mean,Mean_Low,Mean_Up), 
+aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
+  facet_wrap(~ Qualification) +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Age bands and sex",
+       title = "Time spent on activities by gender and age") +
+  theme_minimal()
+```
+
+### Occupation
+
+```{r sex_occ}
+res.soc<-cbind(Activity=rep(lab.l,each=41),res.soc)
+names(res.soc)[2:ncol(res.soc)]<-c("Gender","Occupation", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.soc|>
+                    filter(Gender!="F, no kids" & Gender!="M, no kids" & Occupation != "Item not applicable")|>
+                    select(Activity,Occupation,Gender,Mean,Mean_Low,Mean_Up),
+                  digits=0,row.names = F)
+
+
+ggplot(res.soc|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Occupation != "Item not applicable") |>
+         select(Activity,Gender,Occupation,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
+  facet_wrap(~ Occupation) +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Activities and sex",
+       title = "Time spent on activities by gender and occupation)") +
+  theme_minimal()
+```
+
+### Social class
+
+```{r sex_cla}
+
+res.nss<-cbind(Activity=rep(lab.l,each=40),res.nss)
+names(res.nss)[2:ncol(res.nss)]<-c("Gender", "Class", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
+kableExtra::kable(res.nss|>
+                    filter(Gender!="F, no kids" & Gender!="M, no kids" & Class != "Item not applicable"  & Class != "No answer/refused")|>
+                    select(Activity,Class,Gender,Mean,Mean_Low,Mean_Up),digits=0,row.names = F)
+
+
+ggplot(res.nss|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Class != "Item not applicable" & Class != "No answer/refused") |>
+         select(Activity,Gender,Class,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
+  facet_wrap(~ Class) +
+  geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
+                 height = 0.2) +
+  geom_point(size = 2) +
+  labs(x = "Daily time (minutes)", y = "Sex and activities",
+       title = "Time spent on activities by gender and NS-SEC social class)") +
+  theme_minimal()
+
+
+``` 
+
+
+
+
+
+
+
+
+
