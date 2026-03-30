@@ -17,7 +17,7 @@ format:
       - brand
     css: styles.css
     toc: true
-    page-layout: full
+    page-layout: custom
     
 fig-width: 15
 fig-asp: 0.618

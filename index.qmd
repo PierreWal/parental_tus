@@ -1,3 +1,9 @@
+## Version history
+
+- *30 March:* Recoding part 2, polishing
+- *13 March:* adding definitions,  recoding revision part 1
+- *5 March 2026:* Initial version
+
 ## Objectives
 
 This document presents a descriptive analysis  of the time use of parents of children up to age 16 comparing men and women:
@@ -44,8 +50,8 @@ ew<-read_dta(paste0(datadir,"uktus15_diary_wide.dta"))%>% filter(DVAge>=16 & Ind
 ### Plain English version of the categories of activity we are going to use for the tempograms
 
 lab.l<-c("Sleep","Self-care","Work and education","Housework/shopping",
-         "Caring/volunteering","Physical activity","Leisure","Travel")
-var.l<-c("slp","scr","wrk","hws","car","phy","lei","tra")
+         "Caring","Volunteering/helping", "Leisure", "Physical activity","Travel")
+var.l<-c("slp","scr","wrk","rwk","car","vol","lei","phy","tra")
 ```
 
 
@@ -53,14 +59,16 @@ var.l<-c("slp","scr","wrk","hws","car","phy","lei","tra")
 el$wkd<-ifelse(el$DiaryDay_Act==1 | el$DiaryDay_Act==7,"Weekend","Weekday")
 
 el<-el|> mutate(
-  slp.t =ifelse(whatdoing<210,eptime,0),
-  scr.t =ifelse(whatdoing>=210  & whatdoing<1000,eptime,0),
-  wrk.t=ifelse((whatdoing>=1000 & whatdoing<3000) ,eptime,0),
-  hws.t=ifelse((whatdoing>=3000 & whatdoing<3800 ),eptime,0),
-  car.t=ifelse((whatdoing>=3800 & whatdoing<5000) ,eptime,0),
-  phy.t=ifelse(whatdoing>=6000  & whatdoing<7000,eptime,0),
-  lei.t=ifelse((whatdoing>=5000 & whatdoing<6000) | (whatdoing>=7000 & whatdoing<9000)  ,eptime,0),
-  tra.t=ifelse((whatdoing>=9000 & whatdoing<9940) ,eptime,0)
+  slp.t =ifelse((whatdoing>0 & whatdoing<210) | eptime==5310 ,eptime,0),
+  scr.t =ifelse(whatdoing==0 | (whatdoing>=210  & whatdoing<1000),eptime,0),
+  wrk.t=ifelse((whatdoing>=1000 & whatdoing<2210) | whatdoing == 9110,eptime,0),
+  rwk.t=ifelse((whatdoing>=3000 & whatdoing<3800 ),eptime,0),
+  car.t=ifelse((whatdoing>=3800 & whatdoing<4000) ,eptime,0),
+  vol.t=ifelse((whatdoing>=4000 & whatdoing<5000) ,eptime,0),
+  lei.t=ifelse((whatdoing>=5000 & whatdoing<5310) | 
+                 (whatdoing>=6200 & whatdoing<9000)  | whatdoing==2210, eptime,0),
+    phy.t=ifelse(whatdoing>=6000  & whatdoing<6200,eptime,0),
+  tra.t=ifelse(whatdoing>=9000 & whatdoing<9940 &  whatdoing != 9110 ,eptime,0)
 )
 
 for(i in 1:length(var.l)){
@@ -197,16 +205,23 @@ res.soc<-rbind(res.soc,tmp.o)
 
 
 ### Gender (all respondents)
+::: {.panel-tabset}
 
-```{r sex_all}
+#### **Estimates**
+
+```{r sex_all_tab}
 
 res.sex<-cbind(Activity=rep(lab.l,each=4),res.sex)
 names(res.sex)[2:ncol(res.sex)]<-c("Group", "Mean","Mean_Low","Mean_Up","Median","Med_Low","Med_Up","CV","CV_Low","CV_Up")
 kableExtra::kable(res.sex|>
                     filter(Group=="F, kids" | Group=="M, kids")|>
-                    select(Activity,Group,Mean,Mean_Low,Mean_Up),digits = 0,row.names = F)
+                    select(Activity,Group,Mean,Mean_Low,Mean_Up,CV),digits = c(0,0,0,0,0,2),row.names = F)
 
+```
 
+#### **Plot**
+
+```{r sex_all_plot}
 ggplot(res.sex|>filter(Group=="F, kids" | Group=="M, kids")|>
                 select(Activity,Group,Mean,Mean_Low,Mean_Up), 
        aes(x = Mean, y = interaction(Group, Activity, sep = " - "))) +
@@ -217,9 +232,15 @@ ggplot(res.sex|>filter(Group=="F, kids" | Group=="M, kids")|>
   theme_minimal()
 ```
 
+::: 
+
+
 ### Gender (participants)
 
-```{r sex_part}
+::: {.panel-tabset}
+
+#### **Estimates**
+```{r sex_part_tab}
 
 res.sex.p<-cbind(Activity=rep(lab.l,each=4),res.sex.p)
 names(res.sex.p)[2:ncol(res.sex.p)]<-c("Group", "Mean","Mean_Low","Mean_Up","Median","Med_Low","Med_Up","CV","CV_Low","CV_Up")
@@ -227,6 +248,11 @@ kableExtra::kable(res.sex.p|>
                     filter(Group=="F, kids" | Group=="M, kids")|>
                     select(Activity,Group,Mean,Mean_Low,Mean_Up),digits = 0,row.names = F)
 
+```
+
+#### **Plot**
+
+```{r sex_part_plot}
 
 ggplot(res.sex.p|>filter(Group=="F, kids" | Group=="M, kids")|>
                 select(Activity,Group,Mean,Mean_Low,Mean_Up), 
@@ -239,10 +265,15 @@ ggplot(res.sex.p|>filter(Group=="F, kids" | Group=="M, kids")|>
   theme_minimal()
 ```
 
+:::
 
-### Weekend vs weekdays
+### Weekend vs weekdays 
 
-```{r sex_wkd}
+::: {.panel-tabset}
+
+#### **Estimates**
+
+```{r sex_wkd_tab}
 
 res.wkd<-cbind(Activity=rep(lab.l,each=8),res.wkd)
 names(res.wkd)[2:ncol(res.nrkid)]<-c( "Group", "Diary","Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
@@ -250,10 +281,15 @@ kableExtra::kable(res.wkd|>
                     filter(Group=="F, kids" | Group=="M, kids")|>
                     select(Activity,Diary,Group,Mean,Mean_Low,Mean_Up),digits = 0,row.names = F)
 
+```
+
+#### **Plot**
+
+```{r sex_wkd_plot}
 
 ggplot(res.wkd|>filter(Group=="F, kids" | Group=="M, kids") |>
                 select(Activity,Diary,Group,Mean,Mean_Low,Mean_Up), 
-       aes(x = Mean, y = paste(Diary,Group, sep = " - "))) +
+       aes(x = Mean, y = paste(Group, Diary,sep = " - "))) +
     facet_wrap(~Activity,scale="free_x") +
   geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
                  height = 0.2) +
@@ -263,35 +299,51 @@ ggplot(res.wkd|>filter(Group=="F, kids" | Group=="M, kids") |>
   theme_minimal()
 ```
 
-
+:::
 
 ### Number of children
 
-```{r sex_nrkid}
+::: {.panel-tabset}
+
+#### **Estimates**
+
+```{r sex_nrkid_tab}
 
 res.nrkid<-cbind(Activity=rep(lab.l,each=8),res.nrkid)
-names(res.nrkid)[2:ncol(res.nrkid)]<-c("Children", "Gender", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
+names(res.nrkid)[2:ncol(res.nrkid)]<-c("Gender", "Children", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
 kableExtra::kable(res.nrkid|>
-                    filter(Gender!="F, no kids" & Gender!="M, no kids" & Children!="None")|>
+                    filter((Gender=="F, kids" | Gender=="M, kids") & Children!="None")|>
                     select(Activity,Children,Gender,Mean,Mean_Low,Mean_Up),
                   digits = 0,row.names = F)
 
+```
 
-ggplot(res.nrkid|>filter(Gender!="F, no kids" & Gender!="M, no kids" & Children!="None")|>select(Activity,Gender,Children,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Children, sep = " - "))) +
+
+#### **Plot**
+
+```{r sex_nrkid_plot}
+
+ggplot(res.nrkid|> filter((Gender=="F, kids" | Gender=="M, kids") & Children!="None")|>
+                    select(Activity,Children,Gender,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Children, sep = " - "))) +
   facet_wrap(~Activity) +
   geom_errorbarh(aes(xmin = Mean_Low, xmax = Mean_Up), 
                  height = 0.2) +
   geom_point(size = 2) +
   labs(x = "Daily time (minutes)", y = "Number of children and sex",
-       title = "Time spent on activities by gender and parenting status") +
+       title = "Time spent on activities by gender and family size") +
   theme_minimal()
 
 ```
 
+:::
 
 ### Age banded
 
-```{r sex_age}
+::: {.panel-tabset}
+
+#### **Estimates**
+
+```{r sex_age_tab}
 
 res.age<-cbind(Activity=rep(lab.l,each=20),res.age)
 names(res.age)[2:ncol(res.age)]<-c( "Gender","Age", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
@@ -300,6 +352,10 @@ kableExtra::kable(res.age|>
                     select(Activity,Age,Gender,Mean,Mean_Low,Mean_Up),
                   digits = 2,row.names = F)
 
+```
+
+#### **Plot**
+```{r sex_age_plot}
 
 ggplot(res.age|>filter(Gender!="F, no kids" & Gender!="M, no kids" ) |>
          select(Activity,Gender,Age,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
@@ -311,10 +367,14 @@ ggplot(res.age|>filter(Gender!="F, no kids" & Gender!="M, no kids" ) |>
        title = "Time spent on activities by gender and age)") +
   theme_minimal()
 ```
+:::
 
 ### Highest qualification
+::: {.panel-tabset}
 
-```{r sex_qul}
+#### **Estimates**
+
+```{r sex_qul_tab}
 
 res.hiq<-cbind(Activity=rep(lab.l,each=26),res.hiq)
 names(res.hiq)[2:ncol(res.age)]<-c( "Gender","Qualification", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
@@ -323,6 +383,11 @@ kableExtra::kable(res.hiq|>
                     select(Activity,Qualification,Gender,Mean,Mean_Low,Mean_Up),
                   digits=0,row.names = F)
 
+```
+
+#### **Plot**
+
+```{r sex_qul_plot}
 
 ggplot(res.hiq|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Qualification != "Don't know")  |>
          select(Activity,Gender,Qualification,Mean,Mean_Low,Mean_Up), 
@@ -335,8 +400,14 @@ aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
         title = "Time spent on activities by gender and age") +
   theme_minimal()
 ```
+:::
 
 ### Occupation
+::: {.panel-tabset}
+
+#### **Estimates**
+
+```{r sex_occ_tab}
 
 ```{r sex_occ}
 res.soc<-cbind(Activity=rep(lab.l,each=41),res.soc)
@@ -346,6 +417,10 @@ kableExtra::kable(res.soc|>
                     select(Activity,Occupation,Gender,Mean,Mean_Low,Mean_Up),
                   digits=0,row.names = F)
 
+```
+
+#### **Plot**
+```{r sex_occ_plot}
 
 ggplot(res.soc|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Occupation != "Item not applicable") |>
          select(Activity,Gender,Occupation,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
@@ -357,10 +432,15 @@ ggplot(res.soc|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Occupation
        title = "Time spent on activities by gender and occupation)") +
   theme_minimal()
 ```
+:::
 
 ### Social class
 
-```{r sex_cla}
+::: {.panel-tabset}
+
+#### **Estimates**
+
+```{r sex_cla_tab}
 
 res.nss<-cbind(Activity=rep(lab.l,each=40),res.nss)
 names(res.nss)[2:ncol(res.nss)]<-c("Gender", "Class", "Mean","Mean_Low","Mean_Up","CV","CV_Low","CV_Up")
@@ -368,6 +448,11 @@ kableExtra::kable(res.nss|>
                     filter(Gender!="F, no kids" & Gender!="M, no kids" & Class != "Item not applicable"  & Class != "No answer/refused")|>
                     select(Activity,Class,Gender,Mean,Mean_Low,Mean_Up),digits=0,row.names = F)
 
+```
+
+#### **Plot**
+
+```{r sex_cla_plot}
 
 ggplot(res.nss|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Class != "Item not applicable" & Class != "No answer/refused") |>
          select(Activity,Gender,Class,Mean,Mean_Low,Mean_Up), aes(x = Mean, y = interaction(Gender, Activity, sep = " - "))) +
@@ -382,11 +467,322 @@ ggplot(res.nss|>filter(Gender!="F, no kids" & Gender!="M, no kids"  & Class != "
 
 ``` 
 
+:::
 
 
+## Appendix
+
+### Definition of activities (HETUS nomenclature)
+
+::: {.panel-tabset}
+
+#### Sleep: 
+
+  - Sleep
+  - In bed not asleep
+  - Sick in bed
+
+#### Self-care: 
+  - Unspecified personal care
+  - Eating  
+  - Unspecified other personal care
+  - Wash and dress
+  - Other specified personal care
+  
+#### Paid work and full-time education: 
+
+  - Travel in the course of work
+  - Unspecified employment,Unspecified main job
+  - Working time in main job
+  - Coffee and other breaks in main job
+  - Working time in second job
+  - Coffee and other breaks in second job
+  - Unspecified activities related to employment
+  - Lunch break
+  - Other specified activities related to employment
+  - Activities related to job seeking
+  - Other specified activities related to employment
+  - Unspecified study school or university
+  - Unspecified activities related to school or university
+  - Classes and lectures
+  - Homework
+  - other specified activities related to school or university
+
+#### Housework, DIY and shopping:
+
+  - Unspecified household and family care
+  - Unspecified food management
+  - Food preparation and baking
+  - Dish washing
+  - Preserving
+  - Other specified food management
+  - Unspecified household upkeep
+  - Cleaning dwelling
+  - Cleaning yard
+  - Heating and water
+  - Arranging household goods and materials
+  - Disposal of waste
+  - Other or unspecified household upkeep
+  - Unspecified making and care for textiles
+  - Laundry
+  - Ironing
+  - Handicraft and producing textiles
+  - Other specified making and care for textiles
+  - Gardening
+  - Tending domestic animals
+  - Caring for pets
+  - Walking the dog
+  - Other specified gardening and pet care
+  - Unspecified construction and repairs
+  - House construction and renovation
+  - Repairs of dwelling
+  - Making repairing and maintaining equipment
+  - Woodcraft metalcraft sculpture and pottery
+  - Other specified making repairing and maintaining equipment
+  - Vehicle maintenance
+  - Other specified construction and repairs
+  - Unspecified shopping and services
+  - Shopping mainly for food
+  - Shopping mainly for clothing
+  - Shopping mainly related to accommodation
+  - Shopping or browsing at car boot sales or antique fairs
+  - Window shopping or other shopping as leisure
+  - Other specified shopping
+  - Commercial and administrative services
+  - Personal services
+  - Other specified shopping and services
+  - Household management not using the internet
+  - Shopping for and ordering clothing via the internet
+  - Unspecified household management using the internet
+  - Shopping for and ordering unspecified goods and services via the internet
+  - Shopping for and ordering food via the internet
+  - Shopping for and ordering goods and services related to accommodation via theinternet
+  - Shopping for and ordering mass media via the internet
+  - Shopping for and ordering entertainment via the internet
+  - Banking and bill paying via the internet
+  - Other specified household management using the internet
+  - Unspecified shopping
+  - Shopping mainly for food
+  - Shopping mainly for clothing
+  - Shopping mainly related to accommodation
+  - Shopping or browsing at car boot sales or antique fairs
+  - Window shopping or other shopping as leisure
+  - Other specified shopping
+  - Commercial and administrative services
+  - Personal services
+  - Other specified shopping and services
+  - Household management not using the internet
+  - Shopping for and ordering clothing via the internet
+  - Unspecified household management using the internet
+  - Shopping for and ordering unspecified goods and services via the internet
+  - Shopping for and ordering food via the internet
+  - Shopping for and ordering goods and services related to accommodation via the internet
+  - Shopping for and ordering mass media via the internet
+  - Shopping for and ordering entertainment via the internet
+  - Banking and bill paying via the internet
+  - Other specified household management using the internet
+  
+#### Caring for children or adults
+
+  - Unspecified childcare
+  - Unspecified physical care & supervision of a child
+  - Feeding the child
+  - Other and unspecified physical care & supervision of a child
+  - Teaching the child
+  - Reading playing and talking with child
+  - Accompanying child
+  - Other or unspecified childcare
+
+#### Helping / volunteering
+
+  - Unspecified help to a non-dependent e.g. injured adult household member
+  - Physical care of a non-dependent e.g. injured adult household member
+  - Accompanying a non-dependent adult household member e.g. to hospital
+  - Other specified help to a non-dependent adult household member
+  - Unspecified help to a dependent adult household member
+  - Physical care of a dependent adult household member e.g. Alzheimic parent
+  - Accompanying a dependent adult household member e.g. Alzheimic
+  - Other specified help to a dependent adult household member
+  - Unspecified volunteer work and meetings
+  - Unspecified participatory activities
+  - Meetings
+  - Religious activities
+  - Other specified participatory activities
+  - Unspecified organisational work
+  - Work for an organisation
+  - Volunteer work through an organisation
+  - Other specified organisational work
+  - Unspecified informal help to other households
+  - Food management as help to other households
+  - Household upkeep as help to other households
+  - Gardening and pet care as help to other households
+  - Construction and repairs as help to other households
+  - Shopping and services as help to other households
+  - Help to other households in employment and farming
+  - Unspecified childcare as help to other households
+  - Physical care and supervision of child as help to other household
+  - Teaching non-coresident child
+  - Reading playing & talking to non-coresident child
+  - Accompanying non-coresident child
+  - Physical care and supervision of own child as help to other household
+  - Reading playing & talking to own non-coresident child
+  - Accompanying own non-coresident child
+  - Other specified childcare as help to other household
+  - Unspecified help to an adult of another household
+  - Physical care and supervision of an adult as help to another household
+  - Accompanying an adult as help to another household
+  - Other specified help to an adult member of another household
+  - Other specified informal help to another household
+  - Other specified informal help
+  
+
+####  Leisure
+
+  - Unspecified productive exercise
+  - Hunting and fishing
+  - Picking berries mushroom and herbs
+  - Other specified productive exercise
+  - Unspecified sports related activities
+  - Activities related to sports
+  - Activities related to productive exercise
+  - Unspecified social life and entertainment
+  - Unspecified social life
+  - Socialising with family
+  - Visiting and receiving visitors
+  - Celebrations
+  - Telephone conversation
+  - Other specified social life
+  - Unspecified entertainment and culture
+  - Cinema
+  - Unspecified theatre or concerts
+  - Plays musicals or pantomimes
+  - Opera operetta or light opera
+  - Concerts or other performances of classical music
+  - Live music other than classical concerts, opera, and musicals
+  - Dance performances
+  - Other specified theatre or concerts
+  - Art exhibitions and museums
+  - Unspecified library
+  - Borrowing books records audiotapes videotapes CDs VDs etc. from a library
+  - Reference to books and other library materials within a library
+  - Using internet in the library
+  - Using computers in the library other than internet use
+  - Reading newspapers in a library
+  - Other specified library activities
+  - Sports events
+  - Other specified entertainment and culture
+  - Visiting a historical site
+  - Visiting a wildlife site
+  - Visiting a botanical site
+  - Visiting a leisure park
+  - Visiting an urban park playground designated pl
+  - Unspecified hobbies games and computing
+  - Unspecified arts
+  - Unspecified visual arts
+  - Painting drawing or other graphic arts
+  - Making videos taking photographs or related photographic activities
+  - Other specified visual arts
+  - Unspecified performing arts
+  - Singing or other musical activities
+  - Other specified performing arts
+  - Literary arts
+  - Other specified arts
+  - Unspecified hobbies
+  - Collecting
+  - Correspondence
+  - Other specified or unspecified arts and hobbies
+  - Computing - programming
+  - Unspecified information by computing
+  - Information searching on the internet
+  - Other specified information by computing
+  - Unspecified communication by computer
+  - Communication on the internet
+  - Other specified communication by computing
+  - Unspecified other computing
+  - Skype or other video call
+  - Other specified computing
+  - Unspecified games
+  - Solo games and play
+  - Unspecified games and play with others
+  - Billiards pool snooker or petanque
+  - Chess and bridge
+  - Other specified parlour games and play
+  - Computer games
+  - Gambling
+  - Other specified games
+  - Unspecified mass media
+  - Unspecified reading
+  - Reading periodicals
+  - Reading books
+  - Other specified reading
+  - Unspecified TV video or DVD watching
+  - Watching a film on TV
+  - Watching sport on TV
+  - Other specified TV watching
+  - Unspecified video watching
+  - Watching a film on video
+  - Watching sport on video
+  - Other specified video watching
+  - Unspecified listening to radio and music
+  - Unspecified radio listening
+  - Listening to music on the radio
+  - Listening to sport on the radio
+  - Other specified radio listening
+  - Listening to recordings
+
+####  Physical activity
+
+  - Unspecified sports and outdoor activities
+  - Unspecified physical exercise
+  - Walking and hiking
+  - Taking a walk or hike that lasts at least miles or 1 hour
+  - Other walk or hike
+  - Jogging and running
+  - Biking skiing and skating
+  - Unspecified ball games
+  - Indoor pairs or doubles games
+  - Indoor team games
+  - Outdoor pairs or doubles games
+  - Outdoor team games
+  - Other specified ball games
+  - Gymnastics
+  - Fitness
+  - Unspecified water sports
+  - Swimming
+  - Other specified water sports
+  - Other specified physical exercise
 
 
+####  Travel
 
+  - Travel to/from work
+  - Travel to work from home and back only
+  - Travel to work from a place other than home
+  - Travel related to education
+  - Travel escorting to/ from education
+  - Travel related to household care
+  - Travel related to shopping
+  - Travel related to services
+  - Travel escorting a child other than education
+  - Travel escorting an adult other than education
+  - Travel related to organisational work
+  - Travel related to voluntary work and meetings
+  - Travel related to informal help to other households
+  - Travel related to religious activities
+  - Travel related to participatory activities other than religious activities
+  - Travel to visit friends/relatives in their homes not respondents household
+  - Travel related to other social activities
+  - Travel related to entertainment and culture
+  - Travel related to other leisure
+  - Travel related to physical exercise
+  - Travel related to hunting & fishing
+  - Travel related to productive exercise other than hunting & fishing
+  - Travel related to gambling
+  - Travel related to hobbies other than gambling
+  - Travel related to changing locality
+  - Travel to holiday base
+  - Travel for day trip/just walk
+  - Other specified travel
 
-
-
+:::
+  
